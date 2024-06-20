@@ -3,15 +3,27 @@ const WebSocket = require("ws");
 const wss = new WebSocket.Server({ port: 9090 });
 
 let votes = [];
+let activeUsers = [];
 
 wss.on("connection", (ws) => {
-  // Sende aktuelle Votes an den neuen Client
-  ws.send(JSON.stringify({ type: "init", votes }));
+  let userName = "";
 
   ws.on("message", (message) => {
     const data = JSON.parse(message);
 
     switch (data.type) {
+      case "join":
+        userName = data.name;
+        if (!activeUsers.includes(userName)) {
+          activeUsers.push(userName);
+        }
+        // Sende aktualisierte Liste der aktiven Benutzer an alle Clients
+        wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: "activeUsers", activeUsers }));
+          }
+        });
+        break;
       case "vote":
         const existingVoteIndex = votes.findIndex((v) => v.name === data.name);
         if (existingVoteIndex !== -1) {
@@ -19,22 +31,14 @@ wss.on("connection", (ws) => {
         } else {
           votes.push({ name: data.name, value: data.value });
         }
-
-        // Sende aktualisierte Votes an alle Clients
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(
-              JSON.stringify({
-                type: "vote",
-                votes,
-              })
-            );
+            client.send(JSON.stringify({ type: "vote", votes }));
           }
         });
         break;
       case "reset":
         votes = [];
-        // Informiere alle Clients, dass zurückgesetzt wurde
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ type: "reset" }));
@@ -42,7 +46,6 @@ wss.on("connection", (ws) => {
         });
         break;
       case "reveal":
-        // Informiere alle Clients, dass die Votes aufgedeckt wurden
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ type: "reveal" }));
@@ -50,6 +53,16 @@ wss.on("connection", (ws) => {
         });
         break;
     }
+  });
+
+  ws.on("close", () => {
+    activeUsers = activeUsers.filter((user) => user !== userName);
+    // Sende aktualisierte Liste der aktiven Benutzer an alle Clients
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: "activeUsers", activeUsers }));
+      }
+    });
   });
 });
 
