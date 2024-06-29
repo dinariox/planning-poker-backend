@@ -2,8 +2,7 @@ const WebSocket = require("ws");
 
 const wss = new WebSocket.Server({ port: 9090 });
 
-let votes = [];
-let activeUsers = [];
+let users = [];
 
 wss.on("connection", (ws) => {
   let userName = "";
@@ -14,31 +13,28 @@ wss.on("connection", (ws) => {
     switch (data.type) {
       case "join":
         userName = data.name;
-        if (!activeUsers.includes(userName)) {
-          activeUsers.push(userName);
+        if (!users.some((user) => user.name === userName)) {
+          users.push({ name: userName, vote: null });
         }
-        // Sende aktualisierte Liste der aktiven Benutzer an alle Clients
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: "activeUsers", activeUsers }));
+            client.send(JSON.stringify({ type: "users", users }));
           }
         });
         break;
       case "vote":
-        const existingVoteIndex = votes.findIndex((v) => v.name === data.name);
-        if (existingVoteIndex !== -1) {
-          votes[existingVoteIndex].value = data.value;
-        } else {
-          votes.push({ name: data.name, value: data.value });
+        const user = users.find((user) => user.name === data.name);
+        if (user) {
+          user.vote = data.value;
         }
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: "vote", votes }));
+            client.send(JSON.stringify({ type: "users", users }));
           }
         });
         break;
       case "reset":
-        votes = [];
+        users.forEach((user) => (user.vote = null));
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ type: "reset" }));
@@ -56,11 +52,10 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    activeUsers = activeUsers.filter((user) => user !== userName);
-    // Sende aktualisierte Liste der aktiven Benutzer an alle Clients
+    users = users.filter((user) => user.name !== userName);
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type: "activeUsers", activeUsers }));
+        client.send(JSON.stringify({ type: "users", users }));
       }
     });
   });
