@@ -1,67 +1,77 @@
-const WebSocket = require("ws");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const cors = require("cors");
 
-const wss = new WebSocket.Server({ port: 9090 });
+const app = express();
+const server = http.createServer(app);
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://planning-poker.sauerland.love",
+];
+
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST"],
+  },
+});
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+  })
+);
 
 let users = [];
 
-wss.on("connection", (ws) => {
+io.on("connection", (socket) => {
   let userName = "";
 
-  ws.on("message", (message) => {
-    const data = JSON.parse(message);
-
-    switch (data.type) {
-      case "join":
-        userName = data.name;
-        if (!users.some((user) => user.name === userName)) {
-          users.push({ name: userName, vote: null });
-        }
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: "users", users }));
-          }
-        });
-        break;
-      case "vote":
-        const user = users.find((user) => user.name === data.name);
-        if (user) {
-          user.vote = data.value;
-        }
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: "users", users }));
-          }
-        });
-        break;
-      case "reset":
-        users.forEach((user) => (user.vote = null));
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: "reset" }));
-          }
-        });
-        break;
-      case "reveal":
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: "reveal" }));
-          }
-        });
-        break;
-      case "keepalive":
-        // Keep-Alive Nachricht empfangen, keine Aktion erforderlich
-        break;
+  socket.on("join", (name) => {
+    userName = name;
+    if (!users.some((user) => user.name === userName)) {
+      users.push({ name: userName, vote: null });
     }
+    io.emit("users", users);
   });
 
-  ws.on("close", () => {
+  socket.on("vote", (data) => {
+    const user = users.find((user) => user.name === data.name);
+    if (user) {
+      user.vote = data.value;
+    }
+    io.emit("users", users);
+  });
+
+  socket.on("reset", () => {
+    users.forEach((user) => (user.vote = null));
+    io.emit("reset");
+  });
+
+  socket.on("reveal", () => {
+    io.emit("reveal");
+  });
+
+  socket.on("disconnect", () => {
     users = users.filter((user) => user.name !== userName);
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type: "users", users }));
-      }
-    });
+    io.emit("users", users);
   });
 });
 
-console.log("WebSocket server is running on ws://localhost:9090");
+server.listen(9090, () => {
+  console.log("Socket.io server is running on http://localhost:9090");
+});
