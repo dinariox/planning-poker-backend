@@ -48,6 +48,9 @@ wss.on("connection", (ws) => {
           }
         });
         break;
+      case "keepalive":
+        // Keep-Alive Nachricht empfangen, keine Aktion erforderlich
+        break;
     }
   });
 
