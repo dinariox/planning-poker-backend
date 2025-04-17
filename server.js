@@ -9,6 +9,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   "http://localhost:5173",
   "https://planning-poker.sauerland.love",
+  "https://planning-poker-2.sauerland.love",
 ];
 
 const io = new Server(server, {
